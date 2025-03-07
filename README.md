@@ -50,6 +50,14 @@ To run the project, ensure you have the following installed:
 - Required R packages: ggplot2, dplyr, tidyverse, readr, caret, tidymodels, and others listed in the RMarkdown file.
 
   ## How to Run
-  Clone this repository: ```python
+1. Clone this repository:
+```python
 git clone https://github.com/Bwaj99/sta141a-course-project.git
-  ```
+```
+2. Open STA-141A-Final-Project.Rmd in RStudio.
+3. Run the code chunks step by step or knit the document to generate the final report.
+
+## Results and Findings
+- Key insights drawn from data analysis and statistical modeling.
+- Explanation of observed trends, patterns, and significant results.
+- Discussion of model accuracy and interpretation of statistical outputs.
