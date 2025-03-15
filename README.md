@@ -39,6 +39,8 @@ This project explores how neural activity influences decision-making in mice per
 ## References
 
 - Steinmetz et al. (2019) - [Dataset Source](https://pubmed.ncbi.nlm.nih.gov/31776518/)
+- ChatGPT for code help and organization purposes
+- Claude.ai for LaTeX reference
 
 ---
 
