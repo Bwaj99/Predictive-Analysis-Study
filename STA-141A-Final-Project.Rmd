@@ -1,0 +1,454 @@
+---
+title: "STA 141A Project"
+output: html_document
+date: "2025-03-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Data
+
+```{r, results='hide'}
+library(jsonlite)
+
+setwd("C:/Users/tbhar/Downloads/sessions")
+rds_files = list.files(pattern = "*.rds")  #only .rds files
+
+for (file in rds_files) {
+  session_data = readRDS(file)
+
+  print(paste("Processing:", file))
+  print(str(session_data))
+
+  if (is.list(session_data)) {
+    for (name in names(session_data)) {
+      element = session_data[[name]]
+      
+      if (is.data.frame(element) || is.matrix(element)) {
+        df = as.data.frame(element)
+        write.csv(df, paste0(sub(".rds", "", file), "_", name, ".csv"), row.names = FALSE)
+        write_json(df, paste0(sub(".rds", "", file), "_", name, ".json"), pretty = TRUE)
+      }
+    }
+  }
+}
+```
+
+## Part 1
+```{r, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+setwd("C:/Users/tbhar/Downloads/sessions")
+rds_files <- list.files(pattern = "*.rds")
+
+session_summary <- data.frame(Session = numeric(), Trials = numeric(), Neurons = numeric(), Mice = character())
+
+for (file in rds_files) {
+  session_data <- readRDS(file)  
+  session_name <- as.numeric(gsub("\\D", "", file))  # Extract numeric session number
+
+  num_trials <- length(session_data$feedback_type)  # Count trials
+  num_neurons <- ifelse(is.list(session_data$spks), nrow(session_data$spks[[1]]), NA)  # Count neurons
+  mouse_name <- session_data$mouse_name  # Mouse names
+  
+  session_summary <- rbind(session_summary, data.frame(Session = session_name, Trials = num_trials, 
+                                                        Neurons = num_neurons, Mice = mouse_name))
+}
+
+#convert sessions to numeric and sort
+session_summary <- session_summary %>% mutate(Session = as.numeric(Session)) %>% arrange(Session)
+print(session_summary)
+
+
+
+```
+
+## (i)
+```{r, echo=FALSE}
+ggplot(session_summary, aes(x = factor(Session, levels = paste0("session", 1:18)), y = Neurons)) +
+  geom_bar(stat = "identity", fill = "gray") +
+  theme_minimal() +
+  labs(title = "Number of Neurons per Session", x = "Session", y = "Neurons") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggplot(session_summary, aes(x = factor(Session, levels = paste0("session", 1:18)), y = Trials)) +
+  geom_bar(stat = "identity", fill = "darkblue") +
+  theme_minimal() +
+  labs(title = "Number of Trials per Session", x = "Session", y = "Trials") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+session_summary$Session <- factor(session_summary$Session, 
+                                  levels = paste0("session", 1:18), 
+                                  ordered = TRUE)
+
+session_summary$Neurons <- as.numeric(session_summary$Neurons)
+session_summary$Session <- factor(session_summary$Session, 
+                                  levels = paste0("session", 1:18), 
+                                  ordered = TRUE)
+
+neuron_stats <- session_summary %>%
+  group_by(Session) %>%
+  summarise(Variance = ifelse(n() > 1, var(Neurons, na.rm = TRUE), 0))
+
+if (all(neuron_stats$Variance == 0)) {
+  neuron_stats <- session_summary %>%
+    group_by(Session) %>%
+    summarise(MinNeurons = min(Neurons, na.rm = TRUE),
+              MaxNeurons = max(Neurons, na.rm = TRUE))
+  p <- ggplot(neuron_stats, aes(x = Session)) +
+    geom_linerange(aes(ymin = MinNeurons, ymax = MaxNeurons), color = "steelblue") +
+    geom_point(aes(y = MinNeurons), color = "red", size = 3) +
+    geom_point(aes(y = MaxNeurons), color = "blue", size = 3) +
+    theme_minimal() +
+    labs(title = "Min-Max Neuron Count per Session",
+         x = "Session",
+         y = "Neuron Count Range") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+} else {
+  p <- ggplot(neuron_stats, aes(x = Session, y = Variance)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    theme_minimal() +
+    labs(title = "Variance of Neuron Count per Session",
+         x = "Session",
+         y = "Variance") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+print(p)  
+
+
+```
+
+## (ii)
+```{r, echo=FALSE}
+
+trial_avg_data <- data.frame(Trial = numeric(), AvgSpikeCount = numeric())
+
+#loop through all sessions
+for (trial_index in 1:18) {
+  
+  if (length(session_data$spks) >= trial_index && !is.null(session_data$spks[[trial_index]])) {
+    
+    spike_data <- session_data$spks[[trial_index]]  # Extract spike train matrix
+    
+    if (is.matrix(spike_data) && nrow(spike_data) > 0 && ncol(spike_data) > 0) {
+      
+      #average spike count across all neurons and time bins
+      avg_spike_count <- mean(spike_data, na.rm = TRUE)
+      trial_avg_data <- bind_rows(trial_avg_data, data.frame(Trial = trial_index, AvgSpikeCount = avg_spike_count))
+    }
+  }
+}
+
+#Average neural activity per trial
+ggplot(trial_avg_data, aes(x = Trial, y = AvgSpikeCount)) +
+  geom_point(size = 4, color = "black") +  # Large points for visibility
+  geom_line(size = 1, color = "black", linetype = "dashed") +  # Dashed line to connect points
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Average Neural Activity per Trial",
+    x = "Trial Number",
+    y = "Avg Spike Count"
+  ) +
+  scale_x_continuous(breaks = 1:18) +  # Ensure all trials (1-18) are labeled
+  theme(
+    panel.grid.major.x = element_blank(),  # Remove vertical grid lines for clarity
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+## (iii)
+```{r, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+session_avg_data <- data.frame(Session = numeric(), AvgSpikeRate = numeric())
+
+for (session_index in 1:18) {
+  session_file <- paste0("C:/Users/tbhar/Downloads/sessions/session", session_index, ".rds")
+  if (file.exists(session_file)) {
+    session_data <- readRDS(session_file)
+    all_spike_counts <- c()  #store all spike counts for this session
+    
+    for (trial_index in seq_along(session_data$spks)) {
+      spike_data <- session_data$spks[[trial_index]]  #extract spike train matrix
+      if (is.matrix(spike_data) && nrow(spike_data) > 0 && ncol(spike_data) > 0) {
+        all_spike_counts <- c(all_spike_counts, spike_data)  #store spike counts
+      }
+    }
+    
+    #average spike rate
+    if (length(all_spike_counts) > 0) {
+      avg_spike_rate <- mean(all_spike_counts, na.rm = TRUE)
+      session_avg_data <- bind_rows(session_avg_data, data.frame(Session = session_index, AvgSpikeRate = avg_spike_rate))
+    }
+  }
+}
+
+#Average spike rate per session
+ggplot(session_avg_data, aes(x = Session, y = AvgSpikeRate)) +
+  geom_point(size = 4, color = "darkblue") +  # Large points for visibility
+  geom_line(size = 1, color = "darkblue", linetype = "solid") +  # Solid line connecting points
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Average Spike Rate per Session",
+    x = "Session Number",
+    y = "Avg Spike Rate"
+  ) +
+  scale_x_continuous(breaks = 1:18) +  # Ensure all sessions (1-18) are labeled
+  theme(
+    panel.grid.major.x = element_blank(),  # Remove vertical grid lines for clarity
+    panel.grid.minor = element_blank()
+  )
+
+
+```
+
+## (iv) Do neurons encode decision-making differently based on stimulus difficulty?
+```{r, echo=FALSE}
+
+trial_data <- data.frame(Trial = numeric(), AvgSpikeCount = numeric(), Difficulty = character())
+
+for (trial_index in seq_along(session_data$spks)) {
+  spike_data <- session_data$spks[[trial_index]]
+  left_contrast <- session_data$contrast_left[trial_index]
+  right_contrast <- session_data$contrast_right[trial_index]
+  
+  if (is.matrix(spike_data) && nrow(spike_data) > 0 && ncol(spike_data) > 0) {
+    avg_spike_count <- mean(spike_data, na.rm = TRUE)
+    
+    #define difficulty level based on contrast difference
+    contrast_diff <- abs(left_contrast - right_contrast)
+    difficulty <- ifelse(contrast_diff >= 0.75, "Easy", "Hard")  #easy vs. hard
+    trial_data <- bind_rows(trial_data, data.frame(Trial = trial_index, AvgSpikeCount = avg_spike_count, Difficulty = difficulty))
+  }
+}
+
+#convert Difficulty into a factor
+trial_data$Difficulty <- factor(trial_data$Difficulty, levels = c("Hard", "Easy"))
+
+ggplot(trial_data, aes(x = Difficulty, y = AvgSpikeCount, fill = Difficulty)) +
+  geom_violin(alpha = 0.5) +  # Violin plot for distribution
+  geom_boxplot(width = 0.1, color = "black", alpha = 0.7) +  # Boxplot inside violin
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c("Hard" = "red", "Easy" = "blue")) +
+  labs(
+    title = "Neural Activity Across Easy vs. Hard Trials",
+    x = "Trial Difficulty",
+    y = "Average Spike Count"
+  ) +
+  theme(legend.position = "none")
+
+#t-test
+t_test_result <- t.test(AvgSpikeCount ~ Difficulty, data = trial_data)
+print(t_test_result)
+
+#ANOVA
+anova_result <- aov(AvgSpikeCount ~ Difficulty, data = trial_data)
+summary(anova_result)
+
+```
+
+## Part 2 
+```{r, echo=FALSE}
+library(ggplot2)
+
+setwd("C:/Users/tbhar/Downloads/sessions")  
+rds_files <- list.files(pattern = "*.rds")
+session_patterns <- data.frame(Session = character(),
+                               Avg_Neuron_Activity = numeric(),
+                               Avg_Feedback = numeric(),
+                               Avg_Left_Contrast = numeric(),
+                               Avg_Right_Contrast = numeric())
+
+for (file in rds_files) {
+  session_data <- readRDS(file)
+  session_name <- sub(".rds", "", file)
+  
+  #mean neural activity per session
+  mean_spike_counts <- mean(unlist(session_data$spks), na.rm = TRUE)
+
+  #averages for feedback and stimuli
+  avg_feedback <- mean(session_data$feedback_type, na.rm = TRUE)
+  avg_left_contrast <- mean(session_data$contrast_left, na.rm = TRUE)
+  avg_right_contrast <- mean(session_data$contrast_right, na.rm = TRUE)
+  session_patterns <- rbind(session_patterns, data.frame(
+    Session = session_name,
+    Avg_Neuron_Activity = mean_spike_counts,
+    Avg_Feedback = avg_feedback,
+    Avg_Left_Contrast = avg_left_contrast,
+    Avg_Right_Contrast = avg_right_contrast
+  ))
+}
+session_patterns$Session <- factor(session_patterns$Session, levels = paste0("session", 1:18))
+
+#shared patterns across sessions
+ggplot(session_patterns, aes(x = Session)) +
+  geom_line(aes(y = Avg_Neuron_Activity, group = 1, color = "Avg Neuron Activity"), size = 1) +
+  geom_point(aes(y = Avg_Neuron_Activity, color = "Avg Neuron Activity"), size = 3) +
+  geom_line(aes(y = Avg_Feedback, group = 1, color = "Avg Feedback"), size = 1, linetype = "dashed") +
+  geom_point(aes(y = Avg_Feedback, color = "Avg Feedback"), size = 3) +
+  scale_color_manual(values = c("Avg Neuron Activity" = "darkblue", "Avg Feedback" = "darkred")) +
+  labs(title = "Shared Patterns Across Sessions",
+       x = "Session",
+       y = "Average Value",
+       color = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+## (ii) Does neural activity change as the mouse learns the task?
+```{r, echo=FALSE}
+calculate_spike_rate <- function(session_data) {
+  num_trials <- length(session_data$spks)
+  avg_spike_rates <- sapply(session_data$spks[1:100], function(trial_spikes) {
+    mean(rowSums(trial_spikes)) # Summing spikes across neurons and averaging
+  })
+  return(data.frame(Trial = 1:100, AvgSpikeRate = avg_spike_rates))
+}
+
+session1 <- readRDS("C:/Users/tbhar/Downloads/sessions/session1.rds")
+session18 <- readRDS("C:/Users/tbhar/Downloads/sessions/session18.rds")
+session1_rates <- calculate_spike_rate(session1)
+session18_rates <- calculate_spike_rate(session18)
+
+session1_rates$Session <- "Session 1"
+session18_rates$Session <- "Session 18"
+
+#combine data
+spike_data <- rbind(session1_rates, session18_rates)
+
+#spike rate trends
+plot <- ggplot(spike_data, aes(x = Trial, y = AvgSpikeRate, color = Session)) +
+  geom_line() +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(title = "Neural Activity Trends Across First 100 Trials",
+       x = "Trial Number",
+       y = "Average Spike Rate",
+       color = "Session") +
+  theme_minimal()
+
+print(plot)
+
+```
+
+
+## How does neural variability relate to uncertainty in decision-making?
+```{r, echo_FALSE}
+calculate_variability <- function(session_data) {
+  num_trials <- length(session_data$spks)
+  variability <- sapply(session_data$spks, function(trial_spikes) {
+    var(rowSums(trial_spikes)) # Variance of summed spike counts across neurons
+  })
+  contrast_diff <- abs(session_data$contrast_left - session_data$contrast_right)
+  return(data.frame(ContrastDiff = contrast_diff, Variability = variability))
+}
+
+#variability vs. contrast difference
+variability_data <- do.call(rbind, lapply(1:18, function(i) {
+  session_data <- readRDS(paste0("C:/Users/tbhar/Downloads/sessions/session", i, ".rds"))
+  calculate_variability(session_data)
+}))
+
+variability_plot <- ggplot(variability_data, aes(x = ContrastDiff, y = Variability)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(title = "Neural Variability vs. Stimulus Contrast Difference",
+       x = "Contrast Difference",
+       y = "Neural Variability") +
+  theme_minimal()
+
+print(variability_plot)
+
+
+```
+```{r, echo=FALSE, warning=FALSE}
+
+```
+
+
+## Part 3
+```{r, echo=FALSE, warning=FALSE}
+
+library(ggplot2)
+library(stats)
+library(caret)
+library(randomForest)
+
+extract_features_labels <- function(session_data, target_neurons) {
+  num_trials <- length(session_data$spks)
+  spike_features <- t(sapply(session_data$spks, function(trial_spikes) {
+    rowSums(trial_spikes)  #sum spikes across neurons
+  }))
+  
+  #consistent features across sessions
+  if (ncol(spike_features) < target_neurons) {
+    spike_features <- cbind(spike_features, matrix(0, nrow = nrow(spike_features), 
+                                                   ncol = target_neurons - ncol(spike_features)))
+  } else if (ncol(spike_features) > target_neurons) {
+    spike_features <- spike_features[, 1:target_neurons]
+  }
+  
+  contrast_diff <- abs(session_data$contrast_left - session_data$contrast_right)
+  feedback <- session_data$feedback_type  #(1 = success, -1 = failure)
+  return(data.frame(spike_features, ContrastDiff = contrast_diff, Feedback = as.factor(feedback)))
+}
+
+
+setwd("C:/Users/tbhar/Downloads/sessions")  
+session_data_list <- lapply(1:18, function(i) readRDS(paste0("session", i, ".rds")))
+
+#maximum number of neurons across sessions for feature consistency
+max_neurons <- max(sapply(session_data_list, function(session) max(sapply(session$spks, nrow))))
+data_list <- lapply(session_data_list, function(session) extract_features_labels(session, max_neurons))
+full_data <- do.call(rbind, data_list)
+
+#train and test(validation)
+set.seed(123)
+train_index <- createDataPartition(full_data$Feedback, p = 0.8, list = FALSE)
+train_data <- full_data[train_index, ]
+val_data <- full_data[-train_index, ]  # Keep validation set separate from the final test set
+
+model <- randomForest(Feedback ~ ., data = train_data, ntree = 100)
+
+val_predictions <- predict(model, val_data)
+val_confusion_matrix <- confusionMatrix(val_predictions, val_data$Feedback)
+print("Validation Set Performance:")
+print(val_confusion_matrix)
+
+evaluate_session_accuracy <- function(session_data, model, target_neurons, session_id) {
+  session_features <- extract_features_labels(session_data, target_neurons)
+  session_predictions <- predict(model, session_features)
+  
+  correct <- sum(session_predictions == session_features$Feedback)
+  total <- nrow(session_features)
+  accuracy <- correct / total
+  
+  cat(sprintf("Session %d Accuracy: %.2f%%\n", session_id, accuracy * 100))
+}
+
+session_1_data <- session_data_list[[1]]
+session_18_data <- session_data_list[[18]]
+
+evaluate_session_accuracy(session_1_data, model, max_neurons, 1)
+evaluate_session_accuracy(session_18_data, model, max_neurons, 18)
+
+
+
+# Replace "session1_test.rds" and "session18_test.rds" with actual test file names.=
+
+# test_predictions_1 <- evaluate_final_test_set("session1_test.rds", model, max_neurons)
+# test_predictions_18 <- evaluate_final_test_set("session18_test.rds", model, max_neurons)
+
+# print("Predictions for Session 1 Test Set:")
+# print(test_predictions_1)
+
+# print("Predictions for Session 18 Test Set:")
+# print(test_predictions_18)
+```
