@@ -25,6 +25,11 @@ This project explores how neural activity influences decision-making in mice per
 
 ## Running the Code
 
+- Download and open STA-141A-Final-Project.rmd
+- Make sure you have RStudio and R 4.3.2 (or later) downloaded
+- Run each code block in order for all plots to load
+- Adjust file paths as needed
+
 1. Install necessary R libraries
 2. Load `.rds` session data, extract, and preprocess all 18 files
 3. Run exploratory analysis scripts to visualize neural activity
