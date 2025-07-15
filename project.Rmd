@@ -1,5 +1,5 @@
 ---
-title: "STA 141A Project"
+title: "Project"
 output: html_document
 date: "2025-03-04"
 ---
